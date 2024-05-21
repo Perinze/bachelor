@@ -1,5 +1,5 @@
 #!/bin/bash
-xelatex main.tex
+xelatex --shell-escape main.tex
 biber main
-xelatex main.tex
-xelatex main.tex
+xelatex --shell-escape main.tex
+xelatex --shell-escape main.tex

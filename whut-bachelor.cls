@@ -100,6 +100,8 @@
 \fi
 
 \RequirePackage{hyperref}
+\RequirePackage{makecell}
+\RequirePackage{svg}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
