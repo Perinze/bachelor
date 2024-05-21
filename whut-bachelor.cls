@@ -102,6 +102,11 @@
 \RequirePackage{hyperref}
 \RequirePackage{makecell}
 \RequirePackage{svg}
+%\RequirePackage{algorithm}
+%\RequirePackage{algpseudocode}
+\RequirePackage{algorithm2e}
+\SetKwInput{KwIn}{输入}  %<---细节与重点
+\SetKwInput{KwOut}{输出}  %<---细节与重点
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -9,8 +9,6 @@ xlspy是高层综合编译器的前端部分，
 最后，我们介绍如何基于代码变换为XLS中间表示添加浮点数支持，
 用于生成浮点数运算的寄存器传输级代码。
 
-\subsection{系统设计}
-
 \subsection{编译器前端xlspy}
 
 本节详细介绍编译器前端xlspy。
@@ -226,4 +224,161 @@ xlspy生成的IR如果不通过opt进行类型展开，
 首先举一个例子介绍代码变换的功能，
 通过自己编写一个PASS将IR中所有的加法替换为一个复合运算。
 我们要将所有的a + b替换为a + b + b。
-PASS的实现原理如表  所示。
+%PASS的实现原理如表所示。
+
+\begin{algorithm}[H]
+\caption{运算符替换算法}
+\SetAlgoLined
+\KwIn{变换前函数$F$}
+\KwOut{变换后函数$F$}
+$W \gets \{\}$\;
+\ForEach{$node \in F \mid node.op = kAdd$}{
+    $b \gets node[1]$\;
+    $bb \gets BinOp(b, b, kAdd)$\;
+    $node[1] \gets bb$\;
+}
+\end{algorithm}
+
+PASS会对所有Node进行检查，
+如果满足操作符为加法，
+就用两个操作数构建新的复合运算，
+将原本add运算的所有节点用户修改到复合运算。
+
+\subsubsection{类型展开TypeExpansionPass}\label{typeexpansionpass}
+
+TypeExpansionPass是本工作支持动态类型的关键。
+该PASS支持带类型的XLS IR作为输入，
+对于所有运算符和类型的组合，
+在库中挑选对应的模板应用于运算的实际操作数。
+
+例如，add(a, b, type=[int, float])，
+会被展开为add(a, b)（整数加法器）和浮点数加法器，
+并通过运行时的类型推导器选择两个结果中的一种。
+
+类型展开需要拓展XLS IR的语法，
+添加多类型的语言特性，
+这会涉及到对opt源码的一些修改。
+
+\subsubsection{IR解析器}\label{ir_parser}
+
+从编译器前端xlspy传递过来的IR是文件的形式，
+因为xlspy和opt是两个程序。
+因此opt在进行优化前需要先将IR文件解析为可操作的数据结构
+（具体而言是FunctionBase类型）。
+如果我们需要扩充XLS IR的语法，
+那么就需要保证扩充语法的XLS IR对于opt工具仍然可解析，
+即需要扩充ir\_parser.cc和type.h的功能。
+
+首先我们需要修改ParseType的代码，
+使其解析的东西是一个多种参数的列表，
+而非原本的单个类型。
+我们在第一个分支解析LexicalTokenType::kBracketOpen，
+代表多种类型在一个方括号中表示。
+ParseEnumType回反过来调用ParseType，
+读取方括号中所有类型，
+在此基础上再构建出EnumType（包含所有可能的类型），
+保存在package中。
+
+EnumType的位宽是所有可能的类型占用位宽中的最大值n，
+再加上位宽log(n-1)+1表示当前数据是哪一个类型。
+比如现在EnumType中有7种可能的类型，
+那么需要额外的3位i表示现在是第i种类型。
+
+要添加XLS IR原本不支持的类型，
+我们还需要在type.h/cc中添加相应的新类型。
+TypeExpansionPass会在遍历到包含动态类型的FunctionBase时，
+a) 将其展开为多个子FunctionBase，
+每个仅处理单一类型；
+b) 并在原本的FunctionBase中调用这多个子FunctionBase，
+并通过额外的type位宽，
+选择多个结果中类型匹配的那个，
+作为原本FunctionBase的运算结果。
+注意FunctionBase的输出也需要包含type位宽。
+
+\subsubsection{模板}
+
+模板的原理为简单的文本替换和插入。
+模板示例如清单x.x所示。
+注意模板的ir并非扩展的IR，
+在这里仅有未扩展的IR语法，
+模板应用时，TypeExpansionPass会检查模板中的类型是否与应用的类型匹配。
+如果匹配，
+例如add(a: float, b: float)，
+TypeExpansionPass会将其展开为一个完整的浮点数加法的函数，
+再接入类型选择的MUX上。
+
+\subsection{为XLS中间表示添加浮点数支持}
+
+32位浮点数加法的硬件框图如图\ref{fig:float_add}所示。
+首先我们将两个数字的指数部分相减，
+通过结果获取两个数字的大小关系（ea\_lt\_eb，代表ea比eb大）和差的绝对值（e\_diff），
+注意此时指数较大代表这个数字本身较大。
+接下来为了计算，
+我们需要统一两者的指数部分，
+而两者的尾数最高位均为1，
+不可能左移，
+所以需要将较小数字的指数变大，
+尾数右移（浮点数在这时可能会丢失精度，
+因为最低位会被移出）。
+硬件设计时，
+会无条件将两者的右移结果计算出来，
+并通过ea\_lt\_eb选择需要的结果。
+在做尾数加法前，
+需要先将操作数扩展1位，
+避免两者的和溢出。
+相加后，对结果的尾数和指数进行标准化，
+计算出结果的符号位，
+并拼接为结果的浮点数。
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{figure/float_add.png}
+\caption{浮点数加法器原理图}
+\label{fig:float_add}
+\end{figure}
+
+\subsection{其他浮点数操作}
+
+基于科学计数法，
+其他浮点数操作的实现也很容易设计，
+但这里需要讨论标准化的实现。
+
+因为浮点数加法在尾数相加的过程，
+最高位要么保持原位置，要么进一位，
+所以标准化仅需要考虑尾数是否右移一位。
+所以浮点数加法可以实现为纯组合逻辑。
+减法和乘法的尾数计算结果情况更复杂。
+
+这里需要引入一个二进制运算的操作，
+其定义如下
+$$lowbit(n) = n AND (-n)$$
+这个操作可以提取出二进制n的最低位1。
+而对于尾数计算，
+如果我们可以获得最高位1的位置，
+就可以直接指定标准化过程中需要移位的量。
+获取最高位的方法很简单，
+我们只需要将二进制数反转便可以通过lowbit获取原数字的最高位。
+有了最高位，再通过编码器便可以获取尾数标准化需要的移位量。
+标准化代码如清单\ref{code:normal}所示。
+
+\begin{lstlisting}[label=code:normal, caption=浮点数标准化代码, captionpos=b]
+m_rev = reverse(m)
+m_rev_neg = neg(m_rev)
+m_rev_lowbit = and(m_rev, m_rev_neg)
+shift1 = encode(m_rev_lowbit)
+shift = sub(shift1, literal1)
+m_normal = shll(m, shift)
+\end{lstlisting}
+
+有了标准化的组合逻辑实现，
+我们可以轻易实现组合逻辑的浮点数运算。
+
+\subsection{总结}
+
+本章介绍了编译器前端xlspy、基于XLS优化器的代码变换以及浮点数支持的系统设计和实现。
+在编译器前端部分介绍了类型推导以及XLS中间表示的生成方法；
+接下来介绍了一种通用的基于XLS优化器的代码变换方法，
+并举例说明代码变换的意义；
+最后，我们根据这种代码变换设计了浮点数运算的替换算法，
+并设计各个浮点数运算单元的模板，
+为XLS中间表示提供了浮点运算支持。
