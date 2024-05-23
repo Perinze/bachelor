@@ -12,9 +12,7 @@
 并能够快速定位问题根源，
 从而提高软件开发的效率。
 
-%\subsection{测试用例设计原则}
-
-\subsection{设计的原则}
+\subsection{测试用例的设计原则}
 
 测试用例需要契合系统的接口，
 对于本次研究的高层综合流程，
@@ -44,7 +42,6 @@
 
 \subsection{前端测试}
 
-高层综合流程的前端xlspy支持范围是清单\ref{code:grammar}所示的Python语法，
 为了能够完整地测试xlspy的各部分，
 需要全面测试所有可能出现的语法，
 并保证每个测试单元尽量只反应一种语法的行为。
@@ -59,6 +56,29 @@ Python中的赋值语句支持在同一个语句对多个目标变量赋值，
 并检测输出的IR中是否有多条右值相同，
 目标不同的赋值语句，
 并确保赋值的左右值一一对应。
+针对编译器前端的测试用例清单如表\ref{table.2}所示。
+
+\begin{table}[ht]
+\begin{center}
+\caption{优化流水线的组成表}
+
+\begin{tabular}{ c c }
+    \Xhline{3\arrayrulewidth}
+    测试用例文件名        & 测试对象 \\
+    \hline
+    typed\_arg           & 带类型参数、运算符和返回值 \\
+    mutable              & 常量、赋值语句以及变量 \\
+    multiple\_op         & 赋值和各种运算符 \\
+    complete\_branch     & 完整的分支语句、变量捕获 \\
+    incomplete\_branch   & 不完整的分支语句、变量捕获 \\
+    nested\_branch       & 嵌套分支语句 \\
+    for                  & for循环语句 \\
+    \Xhline{3\arrayrulewidth}
+\end{tabular}
+
+\label{table.2}
+\end{center}
+\end{table}
 
 \subsection{后端测试}
 

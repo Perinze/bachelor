@@ -1,6 +1,6 @@
 \section{基于XLS的Python高层综合编译器}
 
-本章详细介绍基于XLS的Python高层综合编译器的系统架构以及实现原理，
+本章将详细介绍基于XLS的Python高层综合编译器的系统架构以及实现原理，
 包括三个主要部分：编译器前端xlspy、基于XLS优化器的代码变换以及浮点数支持。
 xlspy是高层综合编译器的前端部分，
 能够对Python代码分析并生成XLS中间表示。
@@ -218,7 +218,7 @@ xlspy生成的IR如果不通过opt进行类型展开，
 而是编译的一个环节，
 使用opt和PASS实现的原因是易于实现。
 
-\subsubsection{基于XLS优化器的代码变换}
+\subsection{基于XLS优化器的代码变换}
 
 这个小节介绍基于XLS优化器（opt）实现代码变换。
 首先举一个例子介绍代码变换的功能，
@@ -295,17 +295,15 @@ b) 并在原本的FunctionBase中调用这多个子FunctionBase，
 作为原本FunctionBase的运算结果。
 注意FunctionBase的输出也需要包含type位宽。
 
-\subsubsection{模板}
-
-模板的原理为简单的文本替换和插入。
-模板示例如清单x.x所示。
-注意模板的ir并非扩展的IR，
-在这里仅有未扩展的IR语法，
-模板应用时，TypeExpansionPass会检查模板中的类型是否与应用的类型匹配。
-如果匹配，
-例如add(a: float, b: float)，
-TypeExpansionPass会将其展开为一个完整的浮点数加法的函数，
-再接入类型选择的MUX上。
+%模板的原理为简单的文本替换和插入。
+%模板示例如清单x.x所示。
+%注意模板的ir并非扩展的IR，
+%在这里仅有未扩展的IR语法，
+%模板应用时，TypeExpansionPass会检查模板中的类型是否与应用的类型匹配。
+%如果匹配，
+%例如add(a: float, b: float)，
+%TypeExpansionPass会将其展开为一个完整的浮点数加法的函数，
+%再接入类型选择的MUX上。
 
 \subsection{为XLS中间表示添加浮点数支持}
 
