@@ -203,7 +203,7 @@ IR生成器可以生成对应的XLS IR。
 
 AST的类型信息并不会在XLS IR生成时期展开为具体的硬件结构，
 而是仅生成一个扩充了类型信息XLS IR（扩充XLS IR），
-需要第5章介绍的代码生成PASS来转换到官方支持的XLS IR。
+需要第\ref{typeexpansionpass}节介绍的展开PASS来转换到官方支持的XLS IR。
 举个例子，
 Verilog原生支持整形加法但不支持浮点数加法，
 XLS IR的原生语义也并不能生成浮点数加法的Verilog代码，
@@ -335,10 +335,8 @@ b) 并在原本的FunctionBase中调用这多个子FunctionBase，
 \label{fig:float_add}
 \end{figure}
 
-\subsection{其他浮点数操作}
-
 基于科学计数法，
-其他浮点数操作的实现也很容易设计，
+其它浮点数操作的实现也很容易设计，
 但这里需要讨论标准化的实现。
 
 因为浮点数加法在尾数相加的过程，
