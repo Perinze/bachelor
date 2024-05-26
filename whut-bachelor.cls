@@ -102,11 +102,16 @@
 \RequirePackage{hyperref}
 \RequirePackage{makecell}
 \RequirePackage{svg}
-%\RequirePackage{algorithm}
+\RequirePackage{algorithm}
+\RequirePackage{algorithmic}
+\floatname{algorithm}{算法}
+\renewcommand{\algorithmicrequire}{\textbf{输入：}}
+\renewcommand{\algorithmicensure}{\textbf{输出：}}
+
 %\RequirePackage{algpseudocode}
-\RequirePackage{algorithm2e}
-\SetKwInput{KwIn}{输入}  %<---细节与重点
-\SetKwInput{KwOut}{输出}  %<---细节与重点
+%\RequirePackage{algorithm2e}
+%\SetKwInput{KwIn}{输入}  %<---细节与重点
+%\SetKwInput{KwOut}{输出}  %<---细节与重点
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

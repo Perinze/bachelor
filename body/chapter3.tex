@@ -3,10 +3,10 @@
 本章将详细介绍基于XLS的Python高层综合编译器的系统架构以及实现原理，
 包括三个主要部分：编译器前端xlspy、基于XLS优化器的代码变换以及浮点数支持。
 xlspy是高层综合编译器的前端部分，
-能够对Python代码分析并生成XLS中间表示。
-基于XLS优化器的代码变换是一种对XLS中间表示做展开与修改的方法，
+能够对Python代码分析并生成XLS IR。
+基于XLS优化器的代码变换是一种对XLS IR做展开与修改的方法，
 可以用于类型展开等用途。
-最后，我们介绍如何基于代码变换为XLS中间表示添加浮点数支持，
+最后，我们介绍如何基于代码变换为XLS IR添加浮点数支持，
 用于生成浮点数运算的寄存器传输级代码。
 
 \subsection{编译器前端xlspy}
@@ -15,7 +15,7 @@ xlspy是高层综合编译器的前端部分，
 xlspy是整个高层综合流程的开始，
 它读取硬件设计的Python代码，
 进行语法分析和类型推断等工作，
-并生成可优化的XLS中间表示代码。
+并生成可优化的XLS IR代码。
 让我们用一个例子引出对xlspy的介绍。
 
 \begin{figure}[h]
@@ -57,7 +57,7 @@ for-else之类容易令人感到迷惑的语法不被支持。
 Python是一门动态类型语言，
 在解释器执行的情况下，
 类型信息是在运行时才得知的。
-相反，HDL是非常典型的静态类型语言，
+相反，硬件描述语言是非常典型的静态类型语言，
 因为硬件结构在综合阶段就需要完全确定。
 Python因为其弱类型带来的灵活性被广泛应用，
 但对弱类型的Python进行静态分析是一件自相矛盾的事情。
@@ -65,11 +65,11 @@ Python因为其弱类型带来的灵活性被广泛应用，
 xlspy将类型的支持范围交给用户自行配置，
 并支持用户指定的有限种类型下的动态类型。
 
-Verilog HDL所支持的类型仅有两个维度，
+Verilog硬件描述语言所支持的类型仅有两个维度，
 首先类型是wire还是reg类型，
 其次是位宽。
-作为生成HDL的工具，
-xlspy支持的所有类型必须在编译时期便可推断出对应的HDL类型。
+作为生成硬件描述语言的工具，
+xlspy支持的所有类型必须在编译时期便可推断出对应的硬件描述语言类型。
 所以定义格式的原始方式是定义其位宽
 （wire或者reg需要推导）。
 另一方面，
@@ -81,7 +81,7 @@ xlspy支持在类型配置的范围内支持动态类型。
 动态类型是Python重要的语言特性。
 要在运行时支持多种类型，
 需要硬件电路在计算时保留数据的类型信息。
-xlspy在生成XLS中间表示前会对类型做一次静态分析，
+xlspy在生成XLS IR前会对类型做一次静态分析，
 尽可能多地推导类型信息。
 对于无法在编译期推导出类型的变量，
 xlspy会为源代码逻辑生成多种类型的硬件逻辑，
@@ -110,7 +110,7 @@ xlspy会为源代码逻辑生成多种类型的硬件逻辑，
 由于未指定add1的参数类型，
 xlspy假定变量x可能为int或float类型，
 因此生成两种可能的硬件结构应对可能的输入类型。
-Python的强制类型转换也有对应的HDL逻辑。
+Python的强制类型转换也有对应的硬件描述语言逻辑。
 设想一个接受int和float类型的加法器，
 int类型参数会被隐式转换为float。
 xlspy保留这一行为，
@@ -224,42 +224,47 @@ xlspy生成的IR如果不通过opt进行类型展开，
 首先举一个例子介绍代码变换的功能，
 通过自己编写一个PASS将IR中所有的加法替换为一个复合运算。
 我们要将所有的a + b替换为a + b + b。
-%PASS的实现原理如表所示。
+PASS的实现原理如表\ref{alg.opreplace}所示。
 
-\begin{algorithm}[H]
-\caption{运算符替换算法}
-\SetAlgoLined
-\KwIn{变换前函数$F$}
-\KwOut{变换后函数$F$}
-$W \gets \{\}$\;
-\ForEach{$node \in F \mid node.op = kAdd$}{
-    $b \gets node[1]$\;
-    $bb \gets BinOp(b, b, kAdd)$\;
-    $node[1] \gets bb$\;
-}
-\end{algorithm}
+\begin{table}
+\begin{flushleft}
+    \caption{运算符替换算法}
+    \label{alg.opreplace}
+    \begin{tabular*}{\hsize}{@{}@{\extracolsep{\fill}}l@{}}
+        \Xhline{3\arrayrulewidth}
+        \;\textbf{算法：}浮点数标准化 \\
+        \hline
+
+        \;\textbf{输入：}$\text{变换前函数}F$ \\
+        \;\textbf{输出：}$\text{变换后函数}F$ \\
+        \;1. $ForEach(node \in F \mid node.op = kAdd) \{$ \\
+        \;2. \quad$b \gets node[1]$ \\
+        \;3. \quad$b_1 \gets BinOp(b, b, kAdd)$ \\
+        \;4. \quad$node[1] \gets b_1$ \\
+        \;5. $\}$ \\
+
+        \Xhline{3\arrayrulewidth}
+    \end{tabular*}
+\end{flushleft}
+\end{table}
 
 PASS会对所有Node进行检查，
 如果满足操作符为加法，
 就用两个操作数构建新的复合运算，
 将原本add运算的所有节点用户修改到复合运算。
 
-\subsubsection{类型展开TypeExpansionPass}\label{typeexpansionpass}
-
 TypeExpansionPass是本工作支持动态类型的关键。
 该PASS支持带类型的XLS IR作为输入，
 对于所有运算符和类型的组合，
 在库中挑选对应的模板应用于运算的实际操作数。
-
 例如，add(a, b, type=[int, float])，
 会被展开为add(a, b)（整数加法器）和浮点数加法器，
 并通过运行时的类型推导器选择两个结果中的一种。
-
 类型展开需要拓展XLS IR的语法，
 添加多类型的语言特性，
 这会涉及到对opt源码的一些修改。
 
-\subsubsection{IR解析器}\label{ir_parser}
+\subsubsection{中间表示解析器}\label{ir_parser}
 
 从编译器前端xlspy传递过来的IR是文件的形式，
 因为xlspy和opt是两个程序。
@@ -355,16 +360,28 @@ $$lowbit(n) = n AND (-n)$$
 获取最高位的方法很简单，
 我们只需要将二进制数反转便可以通过lowbit获取原数字的最高位。
 有了最高位，再通过编码器便可以获取尾数标准化需要的移位量。
-标准化代码如清单\ref{code:normal}所示。
+标准化伪代码如表\ref{alg.normalize}所示。
 
-\begin{lstlisting}[label=code:normal, caption=浮点数标准化代码, captionpos=b]
-m_rev = reverse(m)
-m_rev_neg = neg(m_rev)
-m_rev_lowbit = and(m_rev, m_rev_neg)
-shift1 = encode(m_rev_lowbit)
-shift = sub(shift1, literal1)
-m_normal = shll(m, shift)
-\end{lstlisting}
+\begin{table}
+\begin{flushleft}
+    \caption{获取最高位算法}
+    \label{alg.normalize}
+    \begin{tabular*}{\hsize}{@{}@{\extracolsep{\fill}}l@{}}
+        \Xhline{3\arrayrulewidth}
+        \;\textbf{算法：}浮点数标准化 \\
+        \hline
+
+        \;\textbf{输入：}$\text{待标准化浮点数}M$ \\
+        \;\textbf{输出：}$\text{标准化浮点数}N$ \\
+        \;1. $R \gets Reverse(M)$ \\
+        \;2. $R_{lowbit} \gets R \& (-R)$ \\
+        \;3. $S \gets Encode(R_{lowbit}) - 1$ \\
+        \;4. $N \gets ShiftLeft(M, S)$ \\
+
+        \Xhline{3\arrayrulewidth}
+    \end{tabular*}
+\end{flushleft}
+\end{table}
 
 有了标准化的组合逻辑实现，
 我们可以轻易实现组合逻辑的浮点数运算。
@@ -372,9 +389,9 @@ m_normal = shll(m, shift)
 \subsection{本章小结}
 
 本章介绍了编译器前端xlspy、基于XLS优化器的代码变换以及浮点数支持的系统设计和实现。
-在编译器前端部分介绍了类型推导以及XLS中间表示的生成方法；
+在编译器前端部分介绍了类型推导以及XLS IR的生成方法；
 接下来介绍了一种通用的基于XLS优化器的代码变换方法，
 并举例说明代码变换的意义；
 最后，我们根据这种代码变换设计了浮点数运算的替换算法，
 并设计各个浮点数运算单元的模板，
-为XLS中间表示提供了浮点运算支持。
+为XLS IR提供了浮点运算支持。
