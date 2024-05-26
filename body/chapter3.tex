@@ -146,10 +146,9 @@ MUX实现了条件分支语句的功能，
 \end{figure}
 
 图\ref{fig.1}中，所生成的硬件首先分别计算了a + b和a * b两个结果，
-分别命名为c.1和mul.2（这也是生成IR中的值的名称），
-然后MUX根据f的值选择add.1或是mul.2作为c.2的值，
-最后将c.2作为硬件模块的输出。
-从c.1与c.2的分离可以看出，
+然后MUX根据f的值选择加和或是乘积作为选择值，
+作为硬件模块的输出。
+实际在生成XLS IR的过程中，
 xlspy对于同一个变量名，
 可能会生成多个IR值的名称，
 这是因为IR实际上是一种树形结构，
@@ -203,7 +202,7 @@ IR生成器可以生成对应的XLS IR。
 
 AST的类型信息并不会在XLS IR生成时期展开为具体的硬件结构，
 而是仅生成一个扩充了类型信息XLS IR（扩充XLS IR），
-需要第\ref{typeexpansionpass}节介绍的展开PASS来转换到官方支持的XLS IR。
+需要后续介绍的展开PASS来转换到官方支持的XLS IR。
 举个例子，
 Verilog原生支持整形加法但不支持浮点数加法，
 XLS IR的原生语义也并不能生成浮点数加法的Verilog代码，
@@ -228,18 +227,18 @@ PASS的实现原理如表\ref{alg.opreplace}所示。
 
 \begin{table}
 \begin{flushleft}
-    \caption{运算符替换算法}
+    \caption{运算符替换伪代码}
     \label{alg.opreplace}
     \begin{tabular*}{\hsize}{@{}@{\extracolsep{\fill}}l@{}}
         \Xhline{3\arrayrulewidth}
-        \;\textbf{算法：}浮点数标准化 \\
+        \;\textbf{算法：}运算符替换 \\
         \hline
 
-        \;\textbf{输入：}$\text{变换前函数}F$ \\
-        \;\textbf{输出：}$\text{变换后函数}F$ \\
-        \;1. $ForEach(node \in F \mid node.op = kAdd) \{$ \\
+        \;\textbf{输入：}$\text{变换前函数}func$ \\
+        \;\textbf{输出：}$\text{变换后函数}func$ \\
+        \;1. $foreach(node \in func \mid node.op = Add) \{$ \\
         \;2. \quad$b \gets node[1]$ \\
-        \;3. \quad$b_1 \gets BinOp(b, b, kAdd)$ \\
+        \;3. \quad$b_1 \gets BinOp(b, b, Add)$ \\
         \;4. \quad$node[1] \gets b_1$ \\
         \;5. $\}$ \\
 
@@ -283,6 +282,58 @@ ParseEnumType回反过来调用ParseType，
 读取方括号中所有类型，
 在此基础上再构建出EnumType（包含所有可能的类型），
 保存在package中。
+修改后的ParseType伪代码如表\ref{alg.parsetype}所示。
+
+\begin{table}
+\begin{flushleft}
+    \caption{修改后的类型解析器伪代码}
+    \label{alg.parsetype}
+    \begin{tabular*}{\hsize}{@{}@{\extracolsep{\fill}}l@{}}
+        \Xhline{3\arrayrulewidth}
+        \;\textbf{算法：}类型解析器ParseType \\
+        \hline
+
+        \;\textbf{输入：}$\text{Token扫描器}scanner$ \\
+        \;\textbf{输出：}$\text{类型}type$ \\
+        \;1. $if (scanner.next() = ParenOpen) \{$ \\
+        \;2. \quad$type \gets ParseTupleType(scanner)$ \\
+        \;3. $\} else\;if (scanner.next() = BracketOpen) \{$ \\
+        \;4. \quad$type \gets ParseEnumType(scanner)$ \\
+        \;5. $\} else \{$ \\
+        \;6. \quad$type \gets ParseBitsType(scanner)$ \\
+        \;8. \quad$while (scanner.pop() = BracketOpen) \{$\\
+        \;9. \quad\quad$size \gets ParseInt64()$ \\
+        \;10.\quad\quad$scanner.pop()$ \\
+        \;11.\quad\quad$type = GetArrayType(size)$ \\
+        \;12.\quad$\}$ \\
+        \;13.$\}$ \\
+        \;14.$return\;type$ \\
+
+        \Xhline{3\arrayrulewidth}
+    \end{tabular*}
+\end{flushleft}
+\end{table}
+
+\begin{table}
+\begin{flushleft}
+    \caption{浮点数标准化算法伪代码}
+    \label{alg.normalize}
+    \begin{tabular*}{\hsize}{@{}@{\extracolsep{\fill}}l@{}}
+        \Xhline{3\arrayrulewidth}
+        \;\textbf{算法：}浮点数标准化 \\
+        \hline
+
+        \;\textbf{输入：}$\text{待标准化浮点数}m$ \\
+        \;\textbf{输出：}$\text{标准化浮点数}n$ \\
+        \;1. $r \gets Reverse(m)$ \\
+        \;2. $r_{lowbit} \gets r \& (-r)$ \\
+        \;3. $s \gets Encode(r_{lowbit}) - 1$ \\
+        \;4. $n \gets ShiftLeft(m, s)$ \\
+
+        \Xhline{3\arrayrulewidth}
+    \end{tabular*}
+\end{flushleft}
+\end{table}
 
 EnumType的位宽是所有可能的类型占用位宽中的最大值n，
 再加上位宽log(n-1)+1表示当前数据是哪一个类型。
@@ -343,7 +394,6 @@ b) 并在原本的FunctionBase中调用这多个子FunctionBase，
 基于科学计数法，
 其它浮点数操作的实现也很容易设计，
 但这里需要讨论标准化的实现。
-
 因为浮点数加法在尾数相加的过程，
 最高位要么保持原位置，要么进一位，
 所以标准化仅需要考虑尾数是否右移一位。
@@ -361,27 +411,6 @@ $$lowbit(n) = n AND (-n)$$
 我们只需要将二进制数反转便可以通过lowbit获取原数字的最高位。
 有了最高位，再通过编码器便可以获取尾数标准化需要的移位量。
 标准化伪代码如表\ref{alg.normalize}所示。
-
-\begin{table}
-\begin{flushleft}
-    \caption{获取最高位算法}
-    \label{alg.normalize}
-    \begin{tabular*}{\hsize}{@{}@{\extracolsep{\fill}}l@{}}
-        \Xhline{3\arrayrulewidth}
-        \;\textbf{算法：}浮点数标准化 \\
-        \hline
-
-        \;\textbf{输入：}$\text{待标准化浮点数}M$ \\
-        \;\textbf{输出：}$\text{标准化浮点数}N$ \\
-        \;1. $R \gets Reverse(M)$ \\
-        \;2. $R_{lowbit} \gets R \& (-R)$ \\
-        \;3. $S \gets Encode(R_{lowbit}) - 1$ \\
-        \;4. $N \gets ShiftLeft(M, S)$ \\
-
-        \Xhline{3\arrayrulewidth}
-    \end{tabular*}
-\end{flushleft}
-\end{table}
 
 有了标准化的组合逻辑实现，
 我们可以轻易实现组合逻辑的浮点数运算。
